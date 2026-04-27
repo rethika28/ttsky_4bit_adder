@@ -1,40 +1,49 @@
-# SPDX-FileCopyrightText: © 2024 Tiny Tapeout
-# SPDX-License-Identifier: Apache-2.0
-
 import cocotb
-from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles
-
+from cocotb.triggers import Timer
 
 @cocotb.test()
-async def test_project(dut):
-    dut._log.info("Start")
+async def test_adder(dut):
 
-    # Set the clock period to 10 us (100 KHz)
-    clock = Clock(dut.clk, 10, unit="us")
-    cocotb.start_soon(clock.start())
-
-    # Reset
-    dut._log.info("Reset")
-    dut.ena.value = 1
+    # -------------------------
+    # Init
+    # -------------------------
     dut.ui_in.value = 0
     dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
+    dut.ena.value = 1
+    dut.clk.value = 0
+    dut.rst_n.value = 1   # not used, keep high
 
-    dut._log.info("Test project behavior")
+    await Timer(10, units="ns")
 
-    # Set the input values you want to test
-    dut.ui_in.value = 20
-    dut.uio_in.value = 30
+    # -------------------------
+    # Test multiple cases
+    # -------------------------
+    for a in range(16):
+        for b in range(16):
 
-    # Wait for one clock cycle to see the output values
-    await ClockCycles(dut.clk, 1)
+            # Pack inputs: b in upper 4 bits, a in lower 4 bits
+            dut.ui_in.value = (b << 4) | a
 
-    # The following assersion is just an example of how to check the output values.
-    # Change it to match the actual expected output of your module:
-    assert dut.uo_out.value == 50
+            await Timer(1, units="ns")  # allow settle
 
-    # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
+            result = dut.uo_out.value.integer & 0x1F  # 5-bit result
+            expected = a + b
+
+            print(f"A={a}, B={b}, SUM={result}, EXPECTED={expected}")
+
+            assert result == expected, f"Mismatch: {a}+{b} != {result}"
+
+    # -------------------------
+    # Test disable (ena = 0)
+    # -------------------------
+    dut.ena.value = 0
+    dut.ui_in.value = (5 << 4) | 3  # 5 + 3
+
+    await Timer(1, units="ns")
+
+    result = dut.uo_out.value.integer
+    print(f"Disable check: output={result}")
+
+    assert result == 0, "Output should be 0 when ena=0"
+
+    print("PASS ✅")
